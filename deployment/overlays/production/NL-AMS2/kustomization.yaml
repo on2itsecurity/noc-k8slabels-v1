@@ -1,0 +1,12 @@
+namespace: p-daryl-contrib
+
+bases: 
+- ../../../base
+
+resources:
+- vpa.yaml
+
+secretGenerator:
+- name: noc-k8slabels-v1-envini
+  files:
+  - secrets/env.ini

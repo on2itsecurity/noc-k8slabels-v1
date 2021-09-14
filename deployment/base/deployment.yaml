@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: noc-k8slabels-v1
+  labels:
+    app: noc-k8slabels-v1
+spec:
+  revisionHistoryLimit: 1
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: noc-k8slabels-v1
+  template:
+    metadata:
+      labels:
+        app: noc-k8slabels-v1
+    spec:
+      serviceAccountName: noc-k8slabels-v1
+      containers:
+        - name: noc-k8slables-v1
+          image: ghcr.io/on2itsecurity/noc-k8slabels-v1
+          command: ["/server", "--inifile=/secrets/env.ini"]
+          securityContext:
+            runAsUser: 10100
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+              - all
+          resources:
+            limits:
+              cpu: 100m
+              memory: 256Mi
+            requests:
+              cpu: 30m
+              memory: 128Mi
+          volumeMounts:
+          - name: envini
+            mountPath: /secrets
+      volumes:
+        - name: envini
+          secret:
+             secretName: noc-k8slabels-v1-envini

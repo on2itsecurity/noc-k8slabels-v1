@@ -1,0 +1,9 @@
+resources:
+- serviceaccount.yaml
+- clusterrole.yaml
+- clusterrolebinding.yaml
+- deployment.yaml
+
+images:
+- name: ghcr.io/on2itsecurity/noc-k8slabels-v1
+  newTag: latest
