@@ -11,6 +11,7 @@ import (
 	"noc-k8slabels-v1/container/go/pkg/config"
 	"os"
 	"strings"
+	"time"
 )
 
 var c = config.Load()
@@ -73,7 +74,10 @@ func sendUpdatePanAPI(requestBody string, address string) {
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
-	client := &http.Client{Transport: tr}
+	client := &http.Client{
+		Transport: tr,
+		Timeout:   1 * time.Second,
+	}
 
 	data := url.Values{}
 	data.Set("type", "user-id")
