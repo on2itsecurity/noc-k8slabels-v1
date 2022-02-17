@@ -273,7 +273,7 @@ func (c *Controller) processItem(newEvent Event) error {
 		newEvent.IP = object.Status.PodIP
 
 		fmt.Printf("Processing create %s with labels %s\n", newEvent.IP, newEvent.labels)
-		panosapi.UpdateOneIP(net.ParseIP(newEvent.IP), newEvent.labels)
+		panosapi.BatchUpdateIPs(net.ParseIP(newEvent.IP), newEvent.labels)
 
 		return nil
 	case "update":
@@ -300,11 +300,11 @@ func (c *Controller) processItem(newEvent Event) error {
 		fmt.Printf("Processing update %s with labels %s\n", newEvent.IP, newEvent.labels)
 		switch object.Status.Phase {
 		case "Pending", "Running":
-			panosapi.UpdateOneIP(net.ParseIP(newEvent.IP), newEvent.labels)
+			panosapi.BatchUpdateIPs(net.ParseIP(newEvent.IP), newEvent.labels)
 		case "Unknown", "Failed", "Succeeded":
 			panosapi.RemoveOneIP(net.ParseIP(newEvent.IP), newEvent.labels)
 		default:
-			panosapi.UpdateOneIP(net.ParseIP(newEvent.IP), newEvent.labels)
+			panosapi.BatchUpdateIPs(net.ParseIP(newEvent.IP), newEvent.labels)
 		}
 		return nil
 		/*case "delete":

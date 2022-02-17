@@ -3,6 +3,7 @@ module noc-k8slabels-v1/container/go
 go 1.16
 
 require (
+	github.com/charithe/timedbuf v0.0.0-20160717160936-e4a8ee453eb4
 	github.com/imdario/mergo v0.3.12 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/sirupsen/logrus v1.8.1

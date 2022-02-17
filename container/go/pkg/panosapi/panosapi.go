@@ -12,9 +12,12 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/charithe/timedbuf"
 )
 
 var c = config.Load()
+var tb = timedbuf.New(40, 2*time.Second, flushBuffer)
 
 type uidMessage struct {
 	XMLName xml.Name  `xml:"uid-message"`
@@ -99,7 +102,7 @@ func sendUpdatePanAPI(requestBody string, address string) {
 		fmt.Printf("response from pan xml api %s: %s\n", address, body)
 	}
 	defer resp.Body.Close()
-
+	fmt.Printf("Api call send: %s", requestBody)
 	if resp.StatusCode > 299 {
 		body, _ := ioutil.ReadAll(resp.Body)
 		fmt.Printf("response from pan xml api %s: %s\n", address, body)
@@ -149,7 +152,7 @@ func generateRemoveSlice(regEntries []entry) *uidMessage {
 	body := &uidMessage{
 		Type: "update",
 		Payload: []payload{
-			payload{
+			{
 				UnRegister: &unRegister{
 					regEntries,
 				},
@@ -168,6 +171,26 @@ func generateUpdateXML(body *uidMessage) string {
 	return string(requestBody)
 }
 
+func flushBuffer(items []interface{}) {
+
+	var ipItems []ipLabels
+	for _, item := range items {
+		ipItems = append(ipItems, item.(ipLabels))
+	}
+	ipLabelItems := generateUpdateSlice(ipLabelsToSlice(ipItems))
+	requestBody := generateUpdateXML(ipLabelItems)
+
+	sendUpdatePanAPIs(requestBody)
+}
+
+// BatchUpdateIP sends one ip update to the Palo Alto Firewall
+func BatchUpdateIPs(ip net.IP, labels string) {
+	if !strings.Contains(labels, "=") {
+		return
+	}
+	tb.Put(ipLabels{ip, strings.Split(labels, ",")})
+}
+
 // UpdateOneIP sends one ip update to the Palo Alto Firewall
 func UpdateOneIP(ip net.IP, labels string) {
 	if !strings.Contains(labels, "=") {
@@ -176,11 +199,10 @@ func UpdateOneIP(ip net.IP, labels string) {
 	requestBodySlice := generateUpdateSlice(
 		ipLabelsToSlice(
 			[]ipLabels{
-				ipLabels{IP: ip, Labels: strings.Split(labels, ",")}}))
+				{IP: ip, Labels: strings.Split(labels, ",")}}))
 
 	requestBody := generateUpdateXML(requestBodySlice)
 
-	//fmt.Printf("send to pan api xml: %s\n", requestBody)
 	sendUpdatePanAPIs(requestBody)
 }
 
@@ -189,7 +211,7 @@ func RemoveOneIP(ip net.IP, labels string) {
 	requestBodySlice := generateRemoveSlice(
 		ipLabelsToSlice(
 			[]ipLabels{
-				ipLabels{IP: ip, Labels: strings.Split(labels, ",")}}))
+				{IP: ip, Labels: strings.Split(labels, ",")}}))
 
 	requestBody := generateUpdateXML(requestBodySlice)
 
@@ -200,7 +222,7 @@ func RemoveOneIP(ip net.IP, labels string) {
 // ClearAll clears all registrations everything
 func ClearAll() {
 
-	requestBodySlice := &uidMessage{Type: "update", Payload: []payload{payload{Clear: &clear{}}}}
+	requestBodySlice := &uidMessage{Type: "update", Payload: []payload{{Clear: &clear{}}}}
 	requestBody := generateUpdateXML(requestBodySlice)
 
 	//fmt.Printf("send to pan api xml: %s\n", requestBody)
