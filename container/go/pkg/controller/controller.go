@@ -42,6 +42,9 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/leaderelection"
+	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/util/workqueue"
 )
 
@@ -82,33 +85,89 @@ func Start(conf *config.Config, eventHandler Handler) {
 
 	_, err := rest.InClusterConfig()
 	if err != nil {
-		kubeClient = utils.GetClientOutOfCluster()
+		os.Exit(1)
 	} else {
 		kubeClient = utils.GetClient()
 	}
-	informer := cache.NewSharedIndexInformer(
-		&cache.ListWatch{
-			ListFunc: func(options meta_v1.ListOptions) (runtime.Object, error) {
-				return kubeClient.CoreV1().Pods("").List(context.Background(), options)
-			},
-			WatchFunc: func(options meta_v1.ListOptions) (watch.Interface, error) {
-				return kubeClient.CoreV1().Pods("").Watch(context.Background(), options)
-			},
-		},
-		&api_v1.Pod{},
-		time.Duration(conf.Sync.FullResync)*time.Second,
-		cache.Indexers{},
-	)
-	c := newResourceController(kubeClient, eventHandler, informer, "pod")
+
+	podname := os.Getenv("HOSTNAME")
+
+	kubeconfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(clientcmd.NewDefaultClientConfigLoadingRules(), &clientcmd.ConfigOverrides{})
+	namespace, _, err := kubeconfig.Namespace()
+	if err != nil {
+		namespace = "default"
+	}
+	// use a Go context so we can tell the leaderelection code when we want to step down
+	ctx, cancel := context.WithCancel(context.Background())
+
+	defer cancel()
+
 	stopCh := make(chan struct{})
 	defer close(stopCh)
-
-	go c.Run(stopCh)
-
 	sigterm := make(chan os.Signal, 1)
 	signal.Notify(sigterm, syscall.SIGTERM)
 	signal.Notify(sigterm, syscall.SIGINT)
+
+	// we use the Lease lock type since edits to Leases are less common
+	//	 and fewer objects in the cluster watch "all Leases".
+	lock := &resourcelock.LeaseLock{
+		LeaseMeta: meta_v1.ObjectMeta{
+			Name:      "k8slabel",
+			Namespace: namespace,
+		},
+		Client: kubeClient.CoordinationV1(),
+		LockConfig: resourcelock.ResourceLockConfig{
+			Identity: podname,
+		},
+	}
+	/// start the leader election code loop
+	leaderelection.RunOrDie(ctx, leaderelection.LeaderElectionConfig{
+		Lock:            lock,
+		ReleaseOnCancel: true,
+		LeaseDuration:   30 * time.Second,
+		RenewDeadline:   10 * time.Second,
+		RetryPeriod:     5 * time.Second,
+		Callbacks: leaderelection.LeaderCallbacks{
+			OnStartedLeading: func(ctx context.Context) {
+				logrus.WithField("pkg", "k8slabel-pod").Info("Starting k8slabel controller now")
+				logrus.Info(eventHandler)
+
+				informer := cache.NewSharedIndexInformer(
+					&cache.ListWatch{
+						ListFunc: func(options meta_v1.ListOptions) (runtime.Object, error) {
+							return kubeClient.CoreV1().Pods("").List(context.Background(), options)
+						},
+						WatchFunc: func(options meta_v1.ListOptions) (watch.Interface, error) {
+							return kubeClient.CoreV1().Pods("").Watch(context.Background(), options)
+						},
+					},
+					&api_v1.Pod{},
+					time.Duration(conf.Sync.FullResync)*time.Second,
+					cache.Indexers{},
+				)
+				c := newResourceController(kubeClient, eventHandler, informer, "pod")
+				go c.Run(stopCh)
+			},
+			OnStoppedLeading: func() {
+				// we can do cleanup here
+				logrus.WithField("pkg", "k8slabel-pod").Infof("leader lost: %s", podname)
+				os.Exit(0)
+			},
+			OnNewLeader: func(identity string) {
+				// we're notified when new leader elected
+				if identity == podname {
+					// I just got the lock
+					return
+				}
+				logrus.WithField("pkg", "k8slabel-pod").Infof("new leader elected: %s", identity)
+			},
+		},
+	})
+
 	<-sigterm
+	logrus.WithField("pkg", "k8slabel-pod").Info("Received termination, signaling shutdown")
+	cancel()
+
 }
 
 func newResourceController(client kubernetes.Interface, eventHandler Handler, informer cache.SharedIndexInformer, resourceType string) *Controller {
@@ -127,8 +186,6 @@ func newResourceController(client kubernetes.Interface, eventHandler Handler, in
 			newEvent.labels = createKeyValuePairs(object.GetObjectMeta().GetLabels())
 
 			newEvent.eventType = "create"
-
-			//logrus.WithField("pkg", "k8slabel-"+resourceType).Infof("Processing add to %s", newEvent.IP)
 			if err == nil && newEvent.labels != "" {
 				queue.Add(newEvent)
 			}
@@ -145,7 +202,6 @@ func newResourceController(client kubernetes.Interface, eventHandler Handler, in
 
 			newEvent.eventType = "update"
 
-			//logrus.WithField("pkg", "k8slabel-"+resourceType).Infof("Processing update to %s", newEvent.IP)
 			if err == nil && newEvent.labels != "" {
 				queue.Add(newEvent)
 			}
@@ -156,7 +212,6 @@ func newResourceController(client kubernetes.Interface, eventHandler Handler, in
 				return
 			}
 			if object.Status.PodIP == object.Status.HostIP || net.ParseIP(object.Status.PodIP) == nil {
-				fmt.Printf("ignoring %s\n", object.GetObjectMeta().GetName())
 				return
 			}
 
@@ -166,7 +221,6 @@ func newResourceController(client kubernetes.Interface, eventHandler Handler, in
 
 			newEvent.eventType = "delete"
 
-			//logrus.WithField("pkg", "k8slabel-"+resourceType).Infof("Processing delete to %s", newEvent.IP)
 			if err == nil && newEvent.labels != "" {
 				queue.Add(newEvent)
 			}
@@ -186,6 +240,7 @@ func newResourceController(client kubernetes.Interface, eventHandler Handler, in
 func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer c.queue.ShutDown()
+	defer panosapi.Shutdown()
 
 	c.logger.Info("Starting noc-k8slabel controller")
 	serverStartTime = time.Now().Local()
@@ -193,7 +248,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go c.informer.Run(stopCh)
 
 	if !cache.WaitForCacheSync(stopCh, c.HasSynced) {
-		utilruntime.HandleError(fmt.Errorf("Timed out waiting for caches to sync"))
+		utilruntime.HandleError(fmt.Errorf("timed out waiting for caches to sync"))
 		return
 	}
 
@@ -255,31 +310,31 @@ func (c *Controller) processItem(newEvent Event) error {
 	case "create":
 		obj, _, err := c.informer.GetIndexer().GetByKey(newEvent.key)
 		if err != nil {
-			return fmt.Errorf("Error fetching object with key %s from store: %v", newEvent.key, err)
+			return fmt.Errorf("error fetching object with key %s from store: %v", newEvent.key, err)
 		}
 		if obj == nil {
-			return fmt.Errorf("Event with key %s has no object", newEvent.key)
+			return fmt.Errorf("event with key %s has no object", newEvent.key)
 		}
 		object := obj.(*api_v1.Pod)
 
 		if net.ParseIP(object.Status.PodIP) == nil {
-			return fmt.Errorf("Pod %s has no ip, ignoring for now", object.GetObjectMeta().GetName())
+			return fmt.Errorf("pod %s has no ip, ignoring for now", object.GetObjectMeta().GetName())
 		}
 		if object.Status.PodIP == object.Status.HostIP {
-			fmt.Printf("Ignoring pod on HostIP %s\n", object.GetObjectMeta().GetName())
+			c.logger.Debugf("Ignoring pod on HostIP %s", object.GetObjectMeta().GetName())
 			return nil
 		}
 
 		newEvent.IP = object.Status.PodIP
 
-		fmt.Printf("Processing create %s with labels %s\n", newEvent.IP, newEvent.labels)
+		c.logger.Infof("Processing create %s with labels %s", newEvent.IP, newEvent.labels)
 		panosapi.BatchUpdateIPs(net.ParseIP(newEvent.IP), newEvent.labels)
 
 		return nil
 	case "update":
 		obj, _, err := c.informer.GetIndexer().GetByKey(newEvent.key)
 		if err != nil {
-			return fmt.Errorf("Error fetching object with key %s from store: %v", newEvent.key, err)
+			return fmt.Errorf("error fetching object with key %s from store: %v", newEvent.key, err)
 		}
 		if obj == nil {
 			return nil
@@ -289,34 +344,27 @@ func (c *Controller) processItem(newEvent Event) error {
 		if net.ParseIP(newEvent.IP) == nil {
 			newEvent.IP = object.Status.PodIP
 		}
-		if net.ParseIP(newEvent.IP) == nil {
-			return fmt.Errorf("Pod %s has no ip, ignoring for now", object.GetObjectMeta().GetName())
-		}
+
 		if object.Status.HostIP != "" && newEvent.IP == object.Status.HostIP {
-			fmt.Printf("Ignoring pod on HostIP %s\n", object.GetObjectMeta().GetName())
+			c.logger.Debugf("Ignoring pod on HostIP %s", object.GetObjectMeta().GetName())
 			return nil
 		}
 
-		fmt.Printf("Processing update %s with labels %s\n", newEvent.IP, newEvent.labels)
 		switch object.Status.Phase {
 		case "Pending", "Running":
+			if net.ParseIP(newEvent.IP) == nil {
+				return fmt.Errorf("pod %s has no ip, ignoring for now", object.GetObjectMeta().GetName())
+			}
+			c.logger.Infof("Processing update %s with labels %s", newEvent.IP, newEvent.labels)
 			panosapi.BatchUpdateIPs(net.ParseIP(newEvent.IP), newEvent.labels)
 		case "Unknown", "Failed", "Succeeded":
+			if net.ParseIP(newEvent.IP) == nil {
+				return nil //Needs a map here... to get previous ip...
+			}
+			c.logger.Infof("Removing %s with labels %s", newEvent.IP, newEvent.labels)
 			panosapi.RemoveOneIP(net.ParseIP(newEvent.IP), newEvent.labels)
-		default:
-			panosapi.BatchUpdateIPs(net.ParseIP(newEvent.IP), newEvent.labels)
 		}
 		return nil
-		/*case "delete":
-		obj, _, err := c.informer.GetIndexer().GetByKey(newEvent.key)
-		if obj != nil || err != nil {
-			return nil
-		}
-
-		fmt.Printf("Processing delete %s with labels %s\n", newEvent.IP, newEvent.labels)
-		panosapi.RemoveOneIP(net.ParseIP(newEvent.IP), newEvent.labels)
-		//c.eventHandler.ObjectDeleted(kbEvent)
-		return nil*/
 	}
 	return nil
 }

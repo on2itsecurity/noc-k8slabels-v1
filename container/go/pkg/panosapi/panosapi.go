@@ -17,7 +17,7 @@ import (
 )
 
 var c = config.Load()
-var tb = timedbuf.New(40, 2*time.Second, flushBuffer)
+var tb = timedbuf.New(250, 2*time.Second, flushBuffer)
 
 type uidMessage struct {
 	XMLName xml.Name  `xml:"uid-message"`
@@ -102,7 +102,6 @@ func sendUpdatePanAPI(requestBody string, address string) {
 		fmt.Printf("response from pan xml api %s: %s\n", address, body)
 	}
 	defer resp.Body.Close()
-	fmt.Printf("Api call send: %s", requestBody)
 	if resp.StatusCode > 299 {
 		body, _ := ioutil.ReadAll(resp.Body)
 		fmt.Printf("response from pan xml api %s: %s\n", address, body)
@@ -136,7 +135,7 @@ func generateUpdateSlice(regEntries []entry) *uidMessage {
 	body := &uidMessage{
 		Type: "update",
 		Payload: []payload{
-			payload{
+			{
 				Register: &register{
 					regEntries,
 				},
@@ -172,8 +171,8 @@ func generateUpdateXML(body *uidMessage) string {
 }
 
 func flushBuffer(items []interface{}) {
-
 	var ipItems []ipLabels
+
 	for _, item := range items {
 		ipItems = append(ipItems, item.(ipLabels))
 	}
@@ -181,6 +180,11 @@ func flushBuffer(items []interface{}) {
 	requestBody := generateUpdateXML(ipLabelItems)
 
 	sendUpdatePanAPIs(requestBody)
+}
+
+// Shutdown flushes and closes the buffer
+func Shutdown() {
+	tb.Close()
 }
 
 // BatchUpdateIP sends one ip update to the Palo Alto Firewall

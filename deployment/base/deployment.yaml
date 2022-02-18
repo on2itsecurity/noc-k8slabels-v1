@@ -6,7 +6,7 @@ metadata:
     app: noc-k8slabels-v1
 spec:
   revisionHistoryLimit: 1
-  replicas: 1
+  replicas: 2
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -22,7 +22,7 @@ spec:
     spec:
       serviceAccountName: noc-k8slabels-v1
       containers:
-        - name: noc-k8slables-v1
+        - name: noc-k8slabels-v1
           image: ghcr.io/on2itsecurity/noc-k8slabels-v1
           command: ["/server", "--inifile=/secrets/env.ini"]
           securityContext:

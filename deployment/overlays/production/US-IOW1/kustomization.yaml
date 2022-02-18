@@ -1,10 +1,10 @@
-namespace: p-daryl-contrib
+namespace: paloalto
 
 bases: 
 - ../../../base
 
 resources:
-- vpa.yaml
+- namespace.yaml
 
 secretGenerator:
 - name: noc-k8slabels-v1-envini
