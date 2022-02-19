@@ -6,6 +6,8 @@ import (
 	"noc-k8slabels-v1/container/go/pkg/config"
 	"noc-k8slabels-v1/container/go/pkg/controller"
 	"noc-k8slabels-v1/container/go/pkg/panosapi"
+
+	_ "github.com/emadolsky/automaxprocs/maxprocs"
 )
 
 var c = config.Load()
@@ -28,8 +30,7 @@ func Run(conf *config.Config) {
 // ParseEventHandler returns the respective handler object specified in the config file.
 func ParseEventHandler(conf *config.Config) controller.Handler {
 
-	var eventHandler controller.Handler
-	eventHandler = new(Default)
+	var eventHandler controller.Handler = new(Default)
 
 	if err := eventHandler.Init(conf); err != nil {
 		log.Fatal(err)

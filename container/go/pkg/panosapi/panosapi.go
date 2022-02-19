@@ -3,21 +3,21 @@ package panosapi
 import (
 	"crypto/tls"
 	"encoding/xml"
-	"fmt"
 	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
 	"noc-k8slabels-v1/container/go/pkg/config"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/charithe/timedbuf"
+	"github.com/sirupsen/logrus"
 )
 
 var c = config.Load()
-var tb = timedbuf.New(250, 2*time.Second, flushBuffer)
+var tbUpdate = timedbuf.New(500, 2*time.Second, flushUpdateBuffer)
+var tbRemove = timedbuf.New(500, 30*time.Second, flushRemoveBuffer)
 
 type uidMessage struct {
 	XMLName xml.Name  `xml:"uid-message"`
@@ -48,7 +48,7 @@ type unRegister struct {
 
 type entry struct {
 	IP         net.IP `xml:"ip,attr"`
-	Persistent int    `xml:"persistent,attr"`
+	Persistent int    `xml:"persistent,attr,omitempty"`
 	Tag        tag    `xml:"tag"`
 }
 
@@ -58,7 +58,7 @@ type tag struct {
 
 type member struct {
 	Text    string `xml:",chardata"`
-	Timeout int    `xml:"timeout,attr"`
+	Timeout int    `xml:"timeout,attr,omitempty"`
 }
 
 type ipLabels struct {
@@ -79,7 +79,7 @@ func sendUpdatePanAPI(requestBody string, address string) {
 	}
 	client := &http.Client{
 		Transport: tr,
-		Timeout:   1 * time.Second,
+		//Timeout:   1 * time.Second,
 	}
 
 	data := url.Values{}
@@ -93,18 +93,18 @@ func sendUpdatePanAPI(requestBody string, address string) {
 	resp, err := client.Do(req)
 
 	if resp == nil {
-		fmt.Printf("Could not complete http(s) call to PAN-FW XML-API %s\n", address)
+		logrus.WithField("pkg", "panapi").Errorf("Could not complete http(s) call to PAN-FW XML-API %s\n", address)
 		return
 	}
 
 	if err != nil {
 		body, _ := ioutil.ReadAll(resp.Body)
-		fmt.Printf("response from pan xml api %s: %s\n", address, body)
+		logrus.WithField("pkg", "panapi").Errorf("response from pan xml api %s: %s", address, body)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode > 299 {
 		body, _ := ioutil.ReadAll(resp.Body)
-		fmt.Printf("response from pan xml api %s: %s\n", address, body)
+		logrus.WithField("pkg", "panapi").Errorf("response from pan xml api %s: %s", address, body)
 
 	}
 }
@@ -129,6 +129,24 @@ func ipLabelsToSlice(ipK8Slabels []ipLabels) []entry {
 	return regEntries
 }
 
+//unregisterRegEntriesSlice removes unneeded/unwanted Persistent and Timeout attributes from the slice
+func unregisterRegEntriesSlice(regEntries []entry) []entry {
+	var newRegentries []entry
+
+	for _, entry := range regEntries {
+		entry.Persistent = 0
+		newMember := []member{}
+		for _, member := range entry.Tag.Member {
+			member.Timeout = 0
+			newMember = append(newMember, member)
+		}
+		entry.Tag.Member = newMember
+		newRegentries = append(newRegentries, entry)
+
+	}
+	return newRegentries
+}
+
 // Fully update the ip: as per http://api-lab.paloaltonetworks.com/registered-ip.html:
 // "When register and unregister are combined in a single document, the entries are processed in the order: unregister, register; only a single <register/> and <unregister/> section should be specified."
 func generateUpdateSlice(regEntries []entry) *uidMessage {
@@ -140,7 +158,7 @@ func generateUpdateSlice(regEntries []entry) *uidMessage {
 					regEntries,
 				},
 				UnRegister: &unRegister{
-					regEntries,
+					unregisterRegEntriesSlice(regEntries),
 				},
 			},
 		},
@@ -153,7 +171,7 @@ func generateRemoveSlice(regEntries []entry) *uidMessage {
 		Payload: []payload{
 			{
 				UnRegister: &unRegister{
-					regEntries,
+					unregisterRegEntriesSlice(regEntries),
 				},
 			},
 		},
@@ -164,13 +182,13 @@ func generateRemoveSlice(regEntries []entry) *uidMessage {
 func generateUpdateXML(body *uidMessage) string {
 	requestBody, err := xml.Marshal(body)
 	if err != nil {
-		fmt.Printf("error: %v\n", err)
-		os.Exit(1)
+		logrus.WithField("pkg", "panapi").Errorf("error: %v", err)
+		return ""
 	}
 	return string(requestBody)
 }
 
-func flushBuffer(items []interface{}) {
+func flushUpdateBuffer(items []interface{}) {
 	var ipItems []ipLabels
 
 	for _, item := range items {
@@ -180,11 +198,26 @@ func flushBuffer(items []interface{}) {
 	requestBody := generateUpdateXML(ipLabelItems)
 
 	sendUpdatePanAPIs(requestBody)
+	logrus.WithField("pkg", "panapi").Debugf("Request body send to PaloAlto: %s", requestBody)
+}
+
+func flushRemoveBuffer(items []interface{}) {
+	var ipItems []ipLabels
+
+	for _, item := range items {
+		ipItems = append(ipItems, item.(ipLabels))
+	}
+	ipLabelItems := generateRemoveSlice(ipLabelsToSlice(ipItems))
+	requestBody := generateUpdateXML(ipLabelItems)
+
+	sendUpdatePanAPIs(requestBody)
+	logrus.WithField("pkg", "panapi").Debugf("Request body send to PaloAlto: %s", requestBody)
 }
 
 // Shutdown flushes and closes the buffer
 func Shutdown() {
-	tb.Close()
+	tbUpdate.Close()
+	tbRemove.Close()
 }
 
 // BatchUpdateIP sends one ip update to the Palo Alto Firewall
@@ -192,7 +225,12 @@ func BatchUpdateIPs(ip net.IP, labels string) {
 	if !strings.Contains(labels, "=") {
 		return
 	}
-	tb.Put(ipLabels{ip, strings.Split(labels, ",")})
+	tbUpdate.Put(ipLabels{ip, strings.Split(labels, ",")})
+}
+
+// BatchRemoveIPs sends one ip update to the Palo Alto Firewall
+func BatchRemoveIPs(ip net.IP, labels string) {
+	tbRemove.Put(ipLabels{ip, strings.Split(labels, ",")})
 }
 
 // UpdateOneIP sends one ip update to the Palo Alto Firewall
@@ -203,7 +241,10 @@ func UpdateOneIP(ip net.IP, labels string) {
 	requestBodySlice := generateUpdateSlice(
 		ipLabelsToSlice(
 			[]ipLabels{
-				{IP: ip, Labels: strings.Split(labels, ",")}}))
+				{IP: ip, Labels: strings.Split(labels, ",")},
+			},
+		),
+	)
 
 	requestBody := generateUpdateXML(requestBodySlice)
 
@@ -215,11 +256,13 @@ func RemoveOneIP(ip net.IP, labels string) {
 	requestBodySlice := generateRemoveSlice(
 		ipLabelsToSlice(
 			[]ipLabels{
-				{IP: ip, Labels: strings.Split(labels, ",")}}))
+				{IP: ip, Labels: strings.Split(labels, ",")},
+			},
+		),
+	)
 
 	requestBody := generateUpdateXML(requestBodySlice)
 
-	//fmt.Printf("send to pan api xml: %s\n", requestBody)
 	sendUpdatePanAPIs(requestBody)
 }
 
@@ -229,7 +272,6 @@ func ClearAll() {
 	requestBodySlice := &uidMessage{Type: "update", Payload: []payload{{Clear: &clear{}}}}
 	requestBody := generateUpdateXML(requestBodySlice)
 
-	//fmt.Printf("send to pan api xml: %s\n", requestBody)
 	sendUpdatePanAPIs(requestBody)
 }
 
@@ -238,12 +280,12 @@ func ReplaceRegisterAll(ipK8Slabels []ipLabels) {
 	requestBodySlice := generateUpdateSlice(
 		ipLabelsToSlice(
 			ipK8Slabels,
-		))
+		),
+	)
 
 	payloadClear := payload{Clear: &clear{}}
 	requestBodySlice.Payload = append(requestBodySlice.Payload, payloadClear)
 	requestBody := generateUpdateXML(requestBodySlice)
 
-	//fmt.Printf("send to pan api xml: %s", requestBody)
 	sendUpdatePanAPIs(requestBody)
 }

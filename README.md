@@ -33,8 +33,6 @@ See deployment directory
 ## Wish list
 This project has still a lot of features to be desired, such as:
  * A better name
- * Kubernetes Lease support to so `noc-k8slabels-v1` can be high-available
  * Better code... if you are not ashamed of your first release, you have shipped to late :)
  * CA check / support
- * Update multiple pods in one API call to the Palo Alto Firewall
  

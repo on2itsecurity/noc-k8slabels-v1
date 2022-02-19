@@ -5,11 +5,14 @@ go 1.17
 require (
 	github.com/charithe/timedbuf v0.0.0-20160717160936-e4a8ee453eb4
 	github.com/sirupsen/logrus v1.8.1
+	github.com/zekroTJA/timedmap v1.4.0
 	gopkg.in/ini.v1 v1.66.4
 	k8s.io/api v0.23.3
 	k8s.io/apimachinery v0.23.3
 	k8s.io/client-go v0.23.3
 )
+
+require github.com/emadolsky/automaxprocs v1.4.1-0.20220104203543-349281033d17
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect

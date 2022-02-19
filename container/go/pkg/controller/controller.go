@@ -33,6 +33,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"github.com/zekroTJA/timedmap"
 	api_v1 "k8s.io/api/core/v1"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -50,7 +51,10 @@ import (
 
 const maxRetries = 5
 
-var serverStartTime time.Time
+const doNotUpdateFor time.Duration = 60 * time.Second
+
+var keyIPmap = timedmap.New(5 * time.Second)
+var keyIPmapInterval time.Duration = time.Duration(config.Load().PanFW.RegisterExpire) * time.Second
 
 // Event indicate the informerEvent
 type Event struct {
@@ -105,9 +109,12 @@ func Start(conf *config.Config, eventHandler Handler) {
 	stopCh := make(chan struct{})
 	defer close(stopCh)
 	sigterm := make(chan os.Signal, 1)
-	signal.Notify(sigterm, syscall.SIGTERM)
-	signal.Notify(sigterm, syscall.SIGINT)
-
+	signal.Notify(sigterm, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigterm
+		logrus.WithField("pkg", "k8slabel-pod").Info("Received termination, signaling shutdown")
+		cancel()
+	}()
 	// we use the Lease lock type since edits to Leases are less common
 	//	 and fewer objects in the cluster watch "all Leases".
 	lock := &resourcelock.LeaseLock{
@@ -130,7 +137,6 @@ func Start(conf *config.Config, eventHandler Handler) {
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
 				logrus.WithField("pkg", "k8slabel-pod").Info("Starting k8slabel controller now")
-				logrus.Info(eventHandler)
 
 				informer := cache.NewSharedIndexInformer(
 					&cache.ListWatch{
@@ -163,10 +169,6 @@ func Start(conf *config.Config, eventHandler Handler) {
 			},
 		},
 	})
-
-	<-sigterm
-	logrus.WithField("pkg", "k8slabel-pod").Info("Received termination, signaling shutdown")
-	cancel()
 
 }
 
@@ -211,7 +213,7 @@ func newResourceController(client kubernetes.Interface, eventHandler Handler, in
 			if err != nil {
 				return
 			}
-			if object.Status.PodIP == object.Status.HostIP || net.ParseIP(object.Status.PodIP) == nil {
+			if object.Status.PodIP == object.Status.HostIP {
 				return
 			}
 
@@ -243,7 +245,6 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer panosapi.Shutdown()
 
 	c.logger.Info("Starting noc-k8slabel controller")
-	serverStartTime = time.Now().Local()
 
 	go c.informer.Run(stopCh)
 
@@ -285,11 +286,12 @@ func (c *Controller) processNextItem() bool {
 		// No error, reset the ratelimit counters
 		c.queue.Forget(newEvent)
 	} else if c.queue.NumRequeues(newEvent) < maxRetries {
-		c.logger.Errorf("Error processing %s (will retry): %v", newEvent.(Event).key, err)
+		c.logger.Debugf("Error processing %s (will retry): %v", newEvent.(Event).key, err)
+		time.Sleep(time.Duration(c.queue.NumRequeues(newEvent)) * (time.Second / 10))
 		c.queue.AddRateLimited(newEvent)
 	} else {
 		// err != nil and too many retries
-		c.logger.Errorf("Error processing %s (giving up): %v", newEvent.(Event).key, err)
+		c.logger.Debugf("Error processing %s (giving up): %v", newEvent.(Event).key, err)
 		c.queue.Forget(newEvent)
 		//utilruntime.HandleError(err)
 	}
@@ -326,6 +328,7 @@ func (c *Controller) processItem(newEvent Event) error {
 		}
 
 		newEvent.IP = object.Status.PodIP
+		keyIPmap.Set(newEvent.key, newEvent.IP, keyIPmapInterval)
 
 		c.logger.Infof("Processing create %s with labels %s", newEvent.IP, newEvent.labels)
 		panosapi.BatchUpdateIPs(net.ParseIP(newEvent.IP), newEvent.labels)
@@ -349,21 +352,50 @@ func (c *Controller) processItem(newEvent Event) error {
 			c.logger.Debugf("Ignoring pod on HostIP %s", object.GetObjectMeta().GetName())
 			return nil
 		}
-
 		switch object.Status.Phase {
 		case "Pending", "Running":
 			if net.ParseIP(newEvent.IP) == nil {
 				return fmt.Errorf("pod %s has no ip, ignoring for now", object.GetObjectMeta().GetName())
 			}
+			// if pod is Terminating, we want to retain the labels, let the delete event remove the ip label entries
+			if object.DeletionTimestamp != nil {
+				return nil
+			}
+			keyExpire, err := keyIPmap.GetExpires(newEvent.key)
+			if keyExpire.After(time.Now().Add(keyIPmapInterval-doNotUpdateFor)) && err == nil {
+				return nil
+			}
 			c.logger.Infof("Processing update %s with labels %s", newEvent.IP, newEvent.labels)
 			panosapi.BatchUpdateIPs(net.ParseIP(newEvent.IP), newEvent.labels)
+			keyIPmap.Set(newEvent.key, newEvent.IP, keyIPmapInterval)
 		case "Unknown", "Failed", "Succeeded":
 			if net.ParseIP(newEvent.IP) == nil {
-				return nil //Needs a map here... to get previous ip...
+				if keyIPmap.GetValue(newEvent.key).(string) == "" {
+					return nil
+				}
+				newEvent.IP = keyIPmap.GetValue(newEvent.key).(string)
+				if net.ParseIP(newEvent.IP) == nil {
+					return nil
+				}
 			}
 			c.logger.Infof("Removing %s with labels %s", newEvent.IP, newEvent.labels)
-			panosapi.RemoveOneIP(net.ParseIP(newEvent.IP), newEvent.labels)
+			panosapi.BatchRemoveIPs(net.ParseIP(newEvent.IP), newEvent.labels)
+			keyIPmap.Remove(newEvent.key)
 		}
+		return nil
+	case "delete":
+		if net.ParseIP(newEvent.IP) == nil {
+			newEvent.IP = keyIPmap.GetValue(newEvent.key).(string)
+			if net.ParseIP(newEvent.IP) == nil {
+				return nil
+			}
+		}
+		if keyIPmap.GetValue(newEvent.key).(string) == "" {
+			return nil
+		}
+		c.logger.Infof("Removing %s with labels %s", newEvent.IP, newEvent.labels)
+		panosapi.BatchRemoveIPs(net.ParseIP(newEvent.IP), newEvent.labels)
+		keyIPmap.Remove(newEvent.key)
 		return nil
 	}
 	return nil
