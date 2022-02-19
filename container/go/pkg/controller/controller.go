@@ -51,6 +51,7 @@ import (
 
 const maxRetries = 5
 
+// Do not update pod ip/labels if < doNotUpdateFor a create or update was send to the pan api.
 const doNotUpdateFor time.Duration = 60 * time.Second
 
 var keyIPmap = timedmap.New(5 * time.Second)
@@ -89,7 +90,7 @@ func Start(conf *config.Config, eventHandler Handler) {
 
 	_, err := rest.InClusterConfig()
 	if err != nil {
-		os.Exit(1)
+		logrus.WithField("pkg", "k8slabel-pod").Fatalln("only in cluster config is supported")
 	} else {
 		kubeClient = utils.GetClient()
 	}

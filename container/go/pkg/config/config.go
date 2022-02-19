@@ -2,8 +2,8 @@ package config
 
 import (
 	"flag"
-	"log"
 
+	"github.com/sirupsen/logrus"
 	"gopkg.in/ini.v1"
 )
 
@@ -24,10 +24,9 @@ type Config struct {
 type Sync struct {
 	// for watching specific namespace, leave it empty for watching all.
 	// this config is ignored when watching namespaces
-	Namespace                 string
-	LabelKeys                 string
-	FullResync                int
-	ClearAllRegisteredOnStart bool
+	Namespace  string
+	LabelKeys  string
+	FullResync int
 }
 
 // PanFW struct contains Palo Alto Networks configuration - part of Config struct
@@ -41,15 +40,14 @@ type PanFW struct {
 func Load() *Config {
 	// Default values
 	sync := &Sync{
-		Namespace:                 "",
-		FullResync:                5 * 60,
-		ClearAllRegisteredOnStart: false,
-		LabelKeys:                 "",
+		Namespace:  "",
+		FullResync: 15 * 60,
+		LabelKeys:  "",
 	}
 	panfw := &PanFW{
 		Token:          "",
 		URL:            []string{},
-		RegisterExpire: 0 * 60,
+		RegisterExpire: 60 * 60,
 	}
 
 	// Parse command runtime parameters
@@ -59,19 +57,19 @@ func Load() *Config {
 	var err error
 	iniFile, err = ini.ShadowLoad(*iniFileName)
 	if err != nil {
-		log.Fatalln("Fail to read inifile", err)
+		logrus.WithField("pkg", "config").Fatalln("Fail to read inifile", err)
 	}
 
 	// Parse SYNC section
 	err = iniFile.Section("SYNC").MapTo(sync)
 	if err != nil {
-		log.Fatalln("Fail to parse SYNC section", err)
+		logrus.WithField("pkg", "config").Fatalln("Fail to parse SYNC section", err)
 	}
 
 	// Parse PAN-FW section
 	err = iniFile.Section("PAN-FW").MapTo(panfw)
 	if err != nil {
-		log.Fatalln("Fail to parse PAN-FW section", err)
+		logrus.WithField("pkg", "config").Fatalln("Fail to parse PAN-FW section", err)
 	}
 	c := &Config{
 		Sync:  sync,

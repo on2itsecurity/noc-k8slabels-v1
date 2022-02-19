@@ -7,7 +7,7 @@ RUN go mod download
 
 COPY pkg pkg/
 COPY *.go .
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o server .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -a -installsuffix cgo -o server .
 
 FROM scratch
 LABEL maintainer "ON2IT"

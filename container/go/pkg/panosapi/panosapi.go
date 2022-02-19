@@ -17,7 +17,22 @@ import (
 
 var c = config.Load()
 var tbUpdate = timedbuf.New(500, 2*time.Second, flushUpdateBuffer)
-var tbRemove = timedbuf.New(500, 30*time.Second, flushRemoveBuffer)
+var tbRemove = timedbuf.New(500, 20*time.Second, flushRemoveBuffer)
+
+func httpClient() *http.Client {
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
+			MaxIdleConnsPerHost: 2,
+			IdleConnTimeout:     90 * time.Second, // Palo Alto has a keepalive of 90 seconds server side, so lets do this also client side
+		},
+		Timeout: 5 * time.Second,
+	}
+
+	return client
+}
+
+var client = httpClient()
 
 type uidMessage struct {
 	XMLName xml.Name  `xml:"uid-message"`
@@ -74,14 +89,6 @@ func sendUpdatePanAPIs(requestBody string) {
 }
 
 func sendUpdatePanAPI(requestBody string, address string) {
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := &http.Client{
-		Transport: tr,
-		//Timeout:   1 * time.Second,
-	}
-
 	data := url.Values{}
 	data.Set("type", "user-id")
 	data.Add("key", c.PanFW.Token)
@@ -96,14 +103,20 @@ func sendUpdatePanAPI(requestBody string, address string) {
 		logrus.WithField("pkg", "panapi").Errorf("Could not complete http(s) call to PAN-FW XML-API %s\n", address)
 		return
 	}
+	defer resp.Body.Close()
 
 	if err != nil {
-		body, _ := ioutil.ReadAll(resp.Body)
-		logrus.WithField("pkg", "panapi").Errorf("response from pan xml api %s: %s", address, body)
+		logrus.WithField("pkg", "panapi").Errorf("response from pan xml api %s: %s", address, err)
+		return
 	}
-	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		logrus.WithField("pkg", "panapi").Errorf("error reading response body from %s: %s", address, err)
+		return
+	}
+
 	if resp.StatusCode > 299 {
-		body, _ := ioutil.ReadAll(resp.Body)
 		logrus.WithField("pkg", "panapi").Errorf("response from pan xml api %s: %s", address, body)
 
 	}
@@ -131,20 +144,13 @@ func ipLabelsToSlice(ipK8Slabels []ipLabels) []entry {
 
 //unregisterRegEntriesSlice removes unneeded/unwanted Persistent and Timeout attributes from the slice
 func unregisterRegEntriesSlice(regEntries []entry) []entry {
-	var newRegentries []entry
-
-	for _, entry := range regEntries {
-		entry.Persistent = 0
-		newMember := []member{}
-		for _, member := range entry.Tag.Member {
-			member.Timeout = 0
-			newMember = append(newMember, member)
+	for numEntry := range regEntries {
+		regEntries[numEntry].Persistent = 0
+		for numMember := range regEntries[numEntry].Tag.Member {
+			regEntries[numEntry].Tag.Member[numMember].Timeout = 0
 		}
-		entry.Tag.Member = newMember
-		newRegentries = append(newRegentries, entry)
-
 	}
-	return newRegentries
+	return regEntries
 }
 
 // Fully update the ip: as per http://api-lab.paloaltonetworks.com/registered-ip.html:
@@ -261,30 +267,6 @@ func RemoveOneIP(ip net.IP, labels string) {
 		),
 	)
 
-	requestBody := generateUpdateXML(requestBodySlice)
-
-	sendUpdatePanAPIs(requestBody)
-}
-
-// ClearAll clears all registrations everything
-func ClearAll() {
-
-	requestBodySlice := &uidMessage{Type: "update", Payload: []payload{{Clear: &clear{}}}}
-	requestBody := generateUpdateXML(requestBodySlice)
-
-	sendUpdatePanAPIs(requestBody)
-}
-
-// ReplaceRegisterAll Clears all registrations from the Palo Alto Firewall and registers all ip/labels at once.
-func ReplaceRegisterAll(ipK8Slabels []ipLabels) {
-	requestBodySlice := generateUpdateSlice(
-		ipLabelsToSlice(
-			ipK8Slabels,
-		),
-	)
-
-	payloadClear := payload{Clear: &clear{}}
-	requestBodySlice.Payload = append(requestBodySlice.Payload, payloadClear)
 	requestBody := generateUpdateXML(requestBodySlice)
 
 	sendUpdatePanAPIs(requestBody)

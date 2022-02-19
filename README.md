@@ -18,13 +18,12 @@ It can be run insite the cluster with a `ServiceAccount` or outside the cluster 
 [PAN-FW]
 Token=                     - Contains the API key of the palo alto firewall in order to update dynamic registrations
 URL=                       - url of firewall(s), separated by a comma (without the /api endpoint) e.g. `https://mypaloaltofw1.on2it.net`
-RegisterExpire=            - Amount of seconds the label registration should persist. Should be higher than `FullReSync`.This is a PanOS >=9 feature.
+RegisterExpire=            - Amount of seconds the label registration should persist. Should be higher than `FullReSync`
 
 [SYNC]
 Namespace=                 - Kubernetes Namespaces to watch, seperated by a `,`. Leave empty for all namespaces
 LabelKeys=                 - Labels to sync, specerated by a `,` Leave empty for all labels. e.g.: `k8s-app,app`
-FullResync=                - Full sync of current state in seconds. 0 is only startup.
-ClearAllRegisteredOnStart= - Boolean. Send a clear all for dynamic registrations on startup. Please use RegisterExpire on PanOS 9 or higher.
+FullResync=                - Full sync of current state in seconds. 0 is only startup
 ```
 ## Deployment
 See deployment directory

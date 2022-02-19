@@ -1,21 +1,16 @@
 package main
 
 import (
-	"log"
-
 	"noc-k8slabels-v1/container/go/pkg/config"
 	"noc-k8slabels-v1/container/go/pkg/controller"
-	"noc-k8slabels-v1/container/go/pkg/panosapi"
 
 	_ "github.com/emadolsky/automaxprocs/maxprocs"
+	"github.com/sirupsen/logrus"
 )
 
 var c = config.Load()
 
 func main() {
-	if c.Sync.ClearAllRegisteredOnStart {
-		panosapi.ClearAll()
-	}
 	Run(c)
 }
 
@@ -33,7 +28,7 @@ func ParseEventHandler(conf *config.Config) controller.Handler {
 	var eventHandler controller.Handler = new(Default)
 
 	if err := eventHandler.Init(conf); err != nil {
-		log.Fatal(err)
+		logrus.WithField("pkg", "main").Fatal(err)
 	}
 	return eventHandler
 }

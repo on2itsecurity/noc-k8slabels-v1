@@ -7,9 +7,9 @@ require (
 	github.com/sirupsen/logrus v1.8.1
 	github.com/zekroTJA/timedmap v1.4.0
 	gopkg.in/ini.v1 v1.66.4
-	k8s.io/api v0.23.3
-	k8s.io/apimachinery v0.23.3
-	k8s.io/client-go v0.23.3
+	k8s.io/api v0.23.4
+	k8s.io/apimachinery v0.23.4
+	k8s.io/client-go v0.23.4
 )
 
 require github.com/emadolsky/automaxprocs v1.4.1-0.20220104203543-349281033d17
