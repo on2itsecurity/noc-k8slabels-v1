@@ -240,6 +240,9 @@ func newResourceController(client kubernetes.Interface, eventHandler Handler, in
 			}
 
 			newEvent.IP = object.Status.PodIP
+			if newEvent.IP == object.Status.HostIP {
+				return
+			}
 
 			newEvent.labels = createKeyValuePairs(object.GetObjectMeta().GetLabels())
 			if newEvent.labels == "" {
