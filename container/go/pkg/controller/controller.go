@@ -96,6 +96,9 @@ func Start(conf *config.Config, eventHandler Handler) {
 	}
 
 	podname := os.Getenv("HOSTNAME")
+	if podname == "" {
+		logrus.WithField("pkg", "k8slabel-pod").Fatalln("HOSTNAME env is empty does not contain the podname")
+	}
 
 	kubeconfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(clientcmd.NewDefaultClientConfigLoadingRules(), &clientcmd.ConfigOverrides{})
 	namespace, _, err := kubeconfig.Namespace()
@@ -142,10 +145,14 @@ func Start(conf *config.Config, eventHandler Handler) {
 				informer := cache.NewSharedIndexInformer(
 					&cache.ListWatch{
 						ListFunc: func(options meta_v1.ListOptions) (runtime.Object, error) {
-							return kubeClient.CoreV1().Pods("").List(context.Background(), options)
+							return kubeClient.CoreV1().Pods("").List(ctx, options)
 						},
 						WatchFunc: func(options meta_v1.ListOptions) (watch.Interface, error) {
-							return kubeClient.CoreV1().Pods("").Watch(context.Background(), options)
+							// Using ctx instead of context.Background() causes the error on shutdown:
+							// watch of *v1.Pod ended with: an error on the server ("unable to decode an event from the watch stream: context canceled") has prevented the request from succeeding
+							//
+							// Not sure what the best play is here. see also https://stackoverflow.com/questions/62381063/handling-context-cancelled-errors
+							return kubeClient.CoreV1().Pods("").Watch(ctx, options)
 						},
 					},
 					&api_v1.Pod{},
@@ -156,7 +163,6 @@ func Start(conf *config.Config, eventHandler Handler) {
 				go c.Run(stopCh)
 			},
 			OnStoppedLeading: func() {
-				// we can do cleanup here
 				logrus.WithField("pkg", "k8slabel-pod").Infof("leader lost: %s", podname)
 				os.Exit(0)
 			},
@@ -174,24 +180,31 @@ func Start(conf *config.Config, eventHandler Handler) {
 }
 
 func newResourceController(client kubernetes.Interface, eventHandler Handler, informer cache.SharedIndexInformer, resourceType string) *Controller {
-	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
 	var newEvent Event
 	var err error
+
+	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+
 	informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			object := obj.(*api_v1.Pod)
 			if err != nil {
 				return
 			}
-			newEvent.key, err = cache.MetaNamespaceKeyFunc(obj)
 
-			newEvent.IP = object.Status.PodIP
+			newEvent.key, err = cache.MetaNamespaceKeyFunc(obj)
+			if err != nil {
+				return
+			}
+
 			newEvent.labels = createKeyValuePairs(object.GetObjectMeta().GetLabels())
+			if newEvent.labels == "" {
+				return
+			}
 
 			newEvent.eventType = "create"
-			if err == nil && newEvent.labels != "" {
-				queue.Add(newEvent)
-			}
+
+			queue.Add(newEvent)
 		},
 		UpdateFunc: func(old, new interface{}) {
 			object := old.(*api_v1.Pod)
@@ -200,33 +213,42 @@ func newResourceController(client kubernetes.Interface, eventHandler Handler, in
 			}
 
 			newEvent.key, err = cache.MetaNamespaceKeyFunc(old)
+			if err != nil {
+				return
+			}
+
 			newEvent.IP = object.Status.PodIP
+
 			newEvent.labels = createKeyValuePairs(object.GetObjectMeta().GetLabels())
+			if newEvent.labels == "" {
+				return
+			}
 
 			newEvent.eventType = "update"
 
-			if err == nil && newEvent.labels != "" {
-				queue.Add(newEvent)
-			}
+			queue.Add(newEvent)
 		},
 		DeleteFunc: func(obj interface{}) {
 			object := obj.(*api_v1.Pod)
 			if err != nil {
 				return
 			}
-			if object.Status.PodIP == object.Status.HostIP {
+
+			newEvent.key, err = cache.MetaNamespaceKeyFunc(obj)
+			if err != nil {
 				return
 			}
 
-			newEvent.key, err = cache.MetaNamespaceKeyFunc(obj)
 			newEvent.IP = object.Status.PodIP
+
 			newEvent.labels = createKeyValuePairs(object.GetObjectMeta().GetLabels())
+			if newEvent.labels == "" {
+				return
+			}
 
 			newEvent.eventType = "delete"
 
-			if err == nil && newEvent.labels != "" {
-				queue.Add(newEvent)
-			}
+			queue.Add(newEvent)
 		},
 	})
 
@@ -300,16 +322,11 @@ func (c *Controller) processNextItem() bool {
 	return true
 }
 
-/* TODOs
-- Enhance event creation using client-side cacheing machanisms - pending
-- Enhance the processItem to classify events - done
-- Send alerts correspoding to events - done
-*/
-
 func (c *Controller) processItem(newEvent Event) error {
 	// process events based on its type
 
 	switch newEvent.eventType {
+
 	case "create":
 		obj, _, err := c.informer.GetIndexer().GetByKey(newEvent.key)
 		if err != nil {
@@ -318,23 +335,26 @@ func (c *Controller) processItem(newEvent Event) error {
 		if obj == nil {
 			return fmt.Errorf("event with key %s has no object", newEvent.key)
 		}
+
 		object := obj.(*api_v1.Pod)
 
 		if net.ParseIP(object.Status.PodIP) == nil {
 			return fmt.Errorf("pod %s has no ip, ignoring for now", object.GetObjectMeta().GetName())
 		}
-		if object.Status.PodIP == object.Status.HostIP {
+
+		newEvent.IP = object.Status.PodIP
+		if object.Status.HostIP != "" && newEvent.IP == object.Status.HostIP {
 			c.logger.Debugf("Ignoring pod on HostIP %s", object.GetObjectMeta().GetName())
 			return nil
 		}
-
-		newEvent.IP = object.Status.PodIP
 		keyIPmap.Set(newEvent.key, newEvent.IP, keyIPmapInterval)
 
 		c.logger.Infof("Processing create %s with labels %s", newEvent.IP, newEvent.labels)
+
 		panosapi.BatchUpdateIPs(net.ParseIP(newEvent.IP), newEvent.labels)
 
 		return nil
+
 	case "update":
 		obj, _, err := c.informer.GetIndexer().GetByKey(newEvent.key)
 		if err != nil {
@@ -343,35 +363,44 @@ func (c *Controller) processItem(newEvent Event) error {
 		if obj == nil {
 			return nil
 		}
+
 		object := obj.(*api_v1.Pod)
 
 		if net.ParseIP(newEvent.IP) == nil {
 			newEvent.IP = object.Status.PodIP
 		}
-
 		if object.Status.HostIP != "" && newEvent.IP == object.Status.HostIP {
 			c.logger.Debugf("Ignoring pod on HostIP %s", object.GetObjectMeta().GetName())
 			return nil
 		}
+
 		switch object.Status.Phase {
+
 		case "Pending", "Running":
 			if net.ParseIP(newEvent.IP) == nil {
 				return fmt.Errorf("pod %s has no ip, ignoring for now", object.GetObjectMeta().GetName())
 			}
+
 			// if pod is Terminating, we want to retain the labels, let the delete event remove the ip label entries
 			if object.DeletionTimestamp != nil {
 				return nil
 			}
+
 			keyExpire, err := keyIPmap.GetExpires(newEvent.key)
-			if keyExpire.After(time.Now().Add(keyIPmapInterval-doNotUpdateFor)) && err == nil {
+
+			if err == nil && keyExpire.After(time.Now().Add(keyIPmapInterval-doNotUpdateFor)) {
 				return nil
 			}
-			c.logger.Infof("Processing update %s with labels %s", newEvent.IP, newEvent.labels)
-			panosapi.BatchUpdateIPs(net.ParseIP(newEvent.IP), newEvent.labels)
+
 			keyIPmap.Set(newEvent.key, newEvent.IP, keyIPmapInterval)
+
+			c.logger.Infof("Processing update %s with labels %s", newEvent.IP, newEvent.labels)
+
+			panosapi.BatchUpdateIPs(net.ParseIP(newEvent.IP), newEvent.labels)
+
 		case "Unknown", "Failed", "Succeeded":
 			if net.ParseIP(newEvent.IP) == nil {
-				if keyIPmap.GetValue(newEvent.key).(string) == "" {
+				if keyIPmap.GetValue(newEvent.key) == nil {
 					return nil
 				}
 				newEvent.IP = keyIPmap.GetValue(newEvent.key).(string)
@@ -379,31 +408,41 @@ func (c *Controller) processItem(newEvent Event) error {
 					return nil
 				}
 			}
-			c.logger.Infof("Removing %s with labels %s", newEvent.IP, newEvent.labels)
-			panosapi.BatchRemoveIPs(net.ParseIP(newEvent.IP), newEvent.labels)
+
 			keyIPmap.Remove(newEvent.key)
+
+			c.logger.Infof("Removing %s with labels %s", newEvent.IP, newEvent.labels)
+
+			panosapi.BatchRemoveIPs(net.ParseIP(newEvent.IP), newEvent.labels)
 		}
 		return nil
+
 	case "delete":
+		if keyIPmap.GetValue(newEvent.key) == nil {
+			return nil
+		}
 		if net.ParseIP(newEvent.IP) == nil {
 			newEvent.IP = keyIPmap.GetValue(newEvent.key).(string)
 			if net.ParseIP(newEvent.IP) == nil {
 				return nil
 			}
 		}
-		if keyIPmap.GetValue(newEvent.key).(string) == "" {
-			return nil
-		}
-		c.logger.Infof("Removing %s with labels %s", newEvent.IP, newEvent.labels)
-		panosapi.BatchRemoveIPs(net.ParseIP(newEvent.IP), newEvent.labels)
+
 		keyIPmap.Remove(newEvent.key)
+
+		c.logger.Infof("Removing %s with labels %s", newEvent.IP, newEvent.labels)
+
+		panosapi.BatchRemoveIPs(net.ParseIP(newEvent.IP), newEvent.labels)
+
 		return nil
 	}
 	return nil
 }
+
 func createKeyValuePairs(m map[string]string) string {
 	conf := config.Load()
 	b := new(bytes.Buffer)
+
 	for key, value := range m {
 		if conf.Sync.LabelKeys == "" || inArray(key, strings.Split(conf.Sync.LabelKeys, ",")) {
 			fmt.Fprintf(b, "%s=%s,", key, value)
@@ -411,6 +450,7 @@ func createKeyValuePairs(m map[string]string) string {
 	}
 	return strings.TrimSuffix(b.String(), ",")
 }
+
 func inArray(val string, array []string) (exists bool) {
 	exists = false
 
