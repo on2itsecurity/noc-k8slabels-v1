@@ -1,2 +1,3 @@
 container/go/.vscode/
+container/go/vendor/
 env.ini

@@ -4,7 +4,8 @@ import (
 	"noc-k8slabels-v1/container/go/pkg/config"
 	"noc-k8slabels-v1/container/go/pkg/controller"
 
-	_ "github.com/emadolsky/automaxprocs/maxprocs"
+	_ "go.uber.org/automaxprocs"
+
 	"github.com/sirupsen/logrus"
 )
 
