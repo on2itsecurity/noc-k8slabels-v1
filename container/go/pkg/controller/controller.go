@@ -105,6 +105,7 @@ func Start(conf *config.Config, eventHandler Handler) {
 	if err != nil {
 		namespace = "default"
 	}
+
 	// use a Go context so we can tell the leaderelection code when we want to step down
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -342,7 +343,9 @@ func (c *Controller) processItem(newEvent Event) error {
 		object := obj.(*api_v1.Pod)
 
 		if net.ParseIP(object.Status.PodIP) == nil {
-			return fmt.Errorf("pod %s has no ip, ignoring for now", object.GetObjectMeta().GetName())
+			// return fmt.Errorf("pod %s has no ip, ignoring for now", object.GetObjectMeta().GetName())
+			// let an update event handle this pod, which will come, do not Error here as it retries 5 times, which is after the update
+			return nil
 		}
 
 		newEvent.IP = object.Status.PodIP
