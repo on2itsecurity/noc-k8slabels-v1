@@ -83,6 +83,7 @@ type ipLabels struct {
 
 func sendUpdatePanAPIs(requestBody string) {
 	for _, panfwurl := range c.PanFW.URL {
+		counter.panTotalAPICalls++
 		address := panfwurl + "/api"
 		sendUpdatePanAPI(requestBody, address)
 	}
@@ -96,30 +97,38 @@ func sendUpdatePanAPI(requestBody string, address string) {
 
 	req, _ := http.NewRequest("POST", address, strings.NewReader(data.Encode()))
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-
 	resp, err := client.Do(req)
 
 	if resp == nil {
+		counter.panTotalFailedAPICalls++
+		counter.panFailedAPICalls++
 		logrus.WithField("pkg", "panapi").Errorf("Could not complete http(s) call to PAN-FW XML-API %s", address)
 		return
 	}
 	defer resp.Body.Close()
 
 	if err != nil {
+		counter.panTotalFailedAPICalls++
+		counter.panFailedAPICalls++
 		logrus.WithField("pkg", "panapi").Errorf("response from pan xml api %s: %s", address, err)
 		return
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		counter.panTotalFailedAPICalls++
+		counter.panResponseParsingError++
 		logrus.WithField("pkg", "panapi").Errorf("error reading response body from %s: %s", address, err)
 		return
 	}
 
 	if resp.StatusCode > 299 {
+		counter.panTotalFailedAPICalls++
+		counter.panResponseHTTPCodeError++
 		logrus.WithField("pkg", "panapi").Errorf("response from pan xml api %s: %s", address, body)
 
 	}
+	counter.panSuccessAPICalls++
 }
 
 func labelsToMemberSlice(labels []string) []member {
@@ -199,6 +208,7 @@ func flushUpdateBuffer(items []interface{}) {
 
 	for _, item := range items {
 		ipItems = append(ipItems, item.(ipLabels))
+		counter.panUpdatedIps++
 	}
 	ipLabelItems := generateUpdateSlice(ipLabelsToSlice(ipItems))
 	requestBody := generateUpdateXML(ipLabelItems)
@@ -212,6 +222,7 @@ func flushRemoveBuffer(items []interface{}) {
 
 	for _, item := range items {
 		ipItems = append(ipItems, item.(ipLabels))
+		counter.panRemovedIps++
 	}
 	ipLabelItems := generateRemoveSlice(ipLabelsToSlice(ipItems))
 	requestBody := generateUpdateXML(ipLabelItems)
@@ -253,7 +264,7 @@ func UpdateOneIP(ip net.IP, labels string) {
 	)
 
 	requestBody := generateUpdateXML(requestBodySlice)
-
+	counter.panUpdatedIps++
 	sendUpdatePanAPIs(requestBody)
 }
 
@@ -268,6 +279,6 @@ func RemoveOneIP(ip net.IP, labels string) {
 	)
 
 	requestBody := generateUpdateXML(requestBodySlice)
-
+	counter.panRemovedIps++
 	sendUpdatePanAPIs(requestBody)
 }

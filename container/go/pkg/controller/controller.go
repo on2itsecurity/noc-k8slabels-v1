@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -30,6 +31,8 @@ import (
 	"noc-k8slabels-v1/container/go/pkg/config"
 	"noc-k8slabels-v1/container/go/pkg/panosapi"
 	"noc-k8slabels-v1/container/go/pkg/utils"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/sirupsen/logrus"
 
@@ -120,6 +123,12 @@ func Start(conf *config.Config, eventHandler Handler) {
 		logrus.WithField("pkg", "k8slabel-pod").Info("Received termination, signaling shutdown")
 		cancel()
 	}()
+	go func() {
+		http.Handle("/metrics", promhttp.Handler())
+		panosapi.Register()
+		logrus.Fatal(http.ListenAndServe(":9090", nil))
+	}()
+
 	// we use the Lease lock type since edits to Leases are less common
 	//	 and fewer objects in the cluster watch "all Leases".
 	lock := &resourcelock.LeaseLock{

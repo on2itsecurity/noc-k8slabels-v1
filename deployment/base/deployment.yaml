@@ -39,6 +39,10 @@ spec:
             requests:
               cpu: 30m
               memory: 128Mi
+          ports:
+          - containerPort: 9090
+            name: prometheus
+            protocol: TCP
           volumeMounts:
           - name: envini
             mountPath: /secrets
