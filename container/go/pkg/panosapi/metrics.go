@@ -31,35 +31,35 @@ var counter panCounter = panCounter{0, 0, 0, 0, 0, 0, 0, 0}
 
 func newPanCollector() *panCollector {
 	return &panCollector{
-		panTotalAPICalls: prometheus.NewDesc(prometheus.BuildFQName(namespace, substring, "apicalls_total"),
+		panTotalAPICalls: prometheus.NewDesc(prometheus.BuildFQName(namespace, substring, "apicalls_count"),
 			"Total api calls to firewall",
 			[]string{"name", "path"}, nil,
 		),
-		panSuccessAPICalls: prometheus.NewDesc(prometheus.BuildFQName(namespace, substring, "apicalls_success_total"),
+		panSuccessAPICalls: prometheus.NewDesc(prometheus.BuildFQName(namespace, substring, "apicalls_success_count"),
 			"Sucessfull api calls to firewall",
 			[]string{"name", "path"}, nil,
 		),
-		panUpdatedIps: prometheus.NewDesc(prometheus.BuildFQName(namespace, substring, "updated_ips_total"),
+		panUpdatedIps: prometheus.NewDesc(prometheus.BuildFQName(namespace, substring, "updated_ips_count"),
 			"Updated pod ips to firewall",
 			[]string{"name", "path"}, nil,
 		),
-		panRemovedIps: prometheus.NewDesc(prometheus.BuildFQName(namespace, substring, "removed_ips_total"),
+		panRemovedIps: prometheus.NewDesc(prometheus.BuildFQName(namespace, substring, "removed_ips_count"),
 			"Removed pod ips from firewall",
 			[]string{"name", "path"}, nil,
 		),
-		panTotalFailedAPICalls: prometheus.NewDesc(prometheus.BuildFQName(namespace, substring, "apicalls_failed_total"),
+		panTotalFailedAPICalls: prometheus.NewDesc(prometheus.BuildFQName(namespace, substring, "apicalls_failed_count"),
 			"Total failed api calls to firewall",
 			[]string{"name", "path"}, nil,
 		),
-		panFailedAPICalls: prometheus.NewDesc(prometheus.BuildFQName(namespace, substring, "apicalls_failed"),
+		panFailedAPICalls: prometheus.NewDesc(prometheus.BuildFQName(namespace, substring, "apicalls_failed_count"),
 			"Failed api calls to firewall",
 			[]string{"name", "path"}, nil,
 		),
-		panResponseParsingError: prometheus.NewDesc(prometheus.BuildFQName(namespace, substring, "response_parsing_error"),
+		panResponseParsingError: prometheus.NewDesc(prometheus.BuildFQName(namespace, substring, "response_parsing_error_count"),
 			"Response from firewall parsing error",
 			[]string{"name", "path"}, nil,
 		),
-		panResponseHTTPCodeError: prometheus.NewDesc(prometheus.BuildFQName(namespace, substring, "response_http_error"),
+		panResponseHTTPCodeError: prometheus.NewDesc(prometheus.BuildFQName(namespace, substring, "response_http_error_count"),
 			"Error Response from firewall",
 			[]string{"name", "path"}, nil,
 		),
@@ -95,6 +95,8 @@ func (collector *panCollector) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(collector.panFailedAPICalls, prometheus.CounterValue, float64(counter.panFailedAPICalls), "log", "path")
 	ch <- prometheus.MustNewConstMetric(collector.panResponseParsingError, prometheus.CounterValue, float64(counter.panResponseParsingError), "log", "path")
 	ch <- prometheus.MustNewConstMetric(collector.panResponseHTTPCodeError, prometheus.CounterValue, float64(counter.panResponseHTTPCodeError), "log", "path")
+	counter = panCounter{0, 0, 0, 0, 0, 0, 0, 0}
+
 }
 func Register() {
 	collector := newPanCollector()

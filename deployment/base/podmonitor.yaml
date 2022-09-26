@@ -6,7 +6,7 @@ metadata:
   name: noc-k8slabels-v1
 spec:
   podMetricsEndpoints:
-  - interval: 15s
+  - interval: 30s
     port: prometheus
   podTargetLabels: [app]
   selector:
