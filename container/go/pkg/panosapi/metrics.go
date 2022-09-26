@@ -1,6 +1,10 @@
 package panosapi
 
-import "github.com/prometheus/client_golang/prometheus"
+import (
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+)
 
 type panCounter struct {
 	panTotalAPICalls         int
@@ -26,6 +30,7 @@ type panCollector struct {
 
 var namespace string = "k8slabels"
 var substring string = "panosapi"
+var nextTimeReset time.Time = time.Now()
 
 var counter panCounter = panCounter{0, 0, 0, 0, 0, 0, 0, 0}
 
@@ -85,18 +90,23 @@ func (collector *panCollector) Describe(ch chan<- *prometheus.Desc) {
 // Collect implements required collect function for all promehteus collectors
 func (collector *panCollector) Collect(ch chan<- prometheus.Metric) {
 
-	//Write latest value for each metric in the prometheus metric channel.
-	//Note that you can pass CounterValue, GaugeValue, or UntypedValue types here.
-	ch <- prometheus.MustNewConstMetric(collector.panTotalAPICalls, prometheus.CounterValue, float64(counter.panTotalAPICalls), "log", "path")
-	ch <- prometheus.MustNewConstMetric(collector.panSuccessAPICalls, prometheus.CounterValue, float64(counter.panSuccessAPICalls), "log", "path")
-	ch <- prometheus.MustNewConstMetric(collector.panUpdatedIps, prometheus.CounterValue, float64(counter.panUpdatedIps), "log", "path")
-	ch <- prometheus.MustNewConstMetric(collector.panRemovedIps, prometheus.CounterValue, float64(counter.panRemovedIps), "log", "path")
-	ch <- prometheus.MustNewConstMetric(collector.panTotalFailedAPICalls, prometheus.CounterValue, float64(counter.panTotalFailedAPICalls), "log", "path")
-	ch <- prometheus.MustNewConstMetric(collector.panFailedAPICalls, prometheus.CounterValue, float64(counter.panFailedAPICalls), "log", "path")
-	ch <- prometheus.MustNewConstMetric(collector.panResponseParsingError, prometheus.CounterValue, float64(counter.panResponseParsingError), "log", "path")
-	ch <- prometheus.MustNewConstMetric(collector.panResponseHTTPCodeError, prometheus.CounterValue, float64(counter.panResponseHTTPCodeError), "log", "path")
-	counter = panCounter{0, 0, 0, 0, 0, 0, 0, 0}
+	// There could be multiple prometheus collectors in the cluster. So resetting everytime would give weird counters in the prometheus instances.
+	// Updating counters only once per x time should solve this
+	if time.Now().After(nextTimeReset) {
+		//Write latest value for each metric in the prometheus metric channel.
+		//Note that you can pass CounterValue, GaugeValue, or UntypedValue types here.
+		ch <- prometheus.MustNewConstMetric(collector.panTotalAPICalls, prometheus.CounterValue, float64(counter.panTotalAPICalls), "log", "path")
+		ch <- prometheus.MustNewConstMetric(collector.panSuccessAPICalls, prometheus.CounterValue, float64(counter.panSuccessAPICalls), "log", "path")
+		ch <- prometheus.MustNewConstMetric(collector.panUpdatedIps, prometheus.CounterValue, float64(counter.panUpdatedIps), "log", "path")
+		ch <- prometheus.MustNewConstMetric(collector.panRemovedIps, prometheus.CounterValue, float64(counter.panRemovedIps), "log", "path")
+		ch <- prometheus.MustNewConstMetric(collector.panTotalFailedAPICalls, prometheus.CounterValue, float64(counter.panTotalFailedAPICalls), "log", "path")
+		ch <- prometheus.MustNewConstMetric(collector.panFailedAPICalls, prometheus.CounterValue, float64(counter.panFailedAPICalls), "log", "path")
+		ch <- prometheus.MustNewConstMetric(collector.panResponseParsingError, prometheus.CounterValue, float64(counter.panResponseParsingError), "log", "path")
+		ch <- prometheus.MustNewConstMetric(collector.panResponseHTTPCodeError, prometheus.CounterValue, float64(counter.panResponseHTTPCodeError), "log", "path")
 
+		counter = panCounter{0, 0, 0, 0, 0, 0, 0, 0}
+		nextTimeReset = time.Now().Add(30 * time.Second)
+	}
 }
 func Register() {
 	collector := newPanCollector()
