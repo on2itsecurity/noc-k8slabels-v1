@@ -3,7 +3,7 @@ package panosapi
 import (
 	"crypto/tls"
 	"encoding/xml"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -100,7 +100,7 @@ func sendUpdatePanAPI(requestBody string, address string) {
 	resp, err := client.Do(req)
 
 	if resp == nil {
-		logrus.WithField("pkg", "panapi").Errorf("Could not complete http(s) call to PAN-FW XML-API %s\n", address)
+		logrus.WithField("pkg", "panapi").Errorf("Could not complete http(s) call to PAN-FW XML-API %s", address)
 		return
 	}
 	defer resp.Body.Close()
@@ -110,7 +110,7 @@ func sendUpdatePanAPI(requestBody string, address string) {
 		return
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		logrus.WithField("pkg", "panapi").Errorf("error reading response body from %s: %s", address, err)
 		return
@@ -142,7 +142,7 @@ func ipLabelsToSlice(ipK8Slabels []ipLabels) []entry {
 	return regEntries
 }
 
-//unregisterRegEntriesSlice removes unneeded/unwanted Persistent and Timeout attributes from the slice
+// unregisterRegEntriesSlice removes unneeded/unwanted persistent and timeout attributes from the slice
 func unregisterRegEntriesSlice(regEntries []entry) []entry {
 	for numEntry := range regEntries {
 		regEntries[numEntry].Persistent = 0
