@@ -50,9 +50,13 @@ func Load() *Config {
 		RegisterExpire: 60 * 60,
 	}
 
+	verbose := flag.Bool("verbose", false, "See api-calls")
 	// Parse command runtime parameters
 	flag.Parse()
 
+	if *verbose {
+		logrus.SetLevel(logrus.DebugLevel)
+	}
 	// Load ini file
 	var err error
 	iniFile, err = ini.ShadowLoad(*iniFileName)
