@@ -153,19 +153,22 @@ func ipLabelsToSlice(ipK8Slabels []ipLabels) []entry {
 
 // unregisterRegEntriesSlice removes unneeded/unwanted persistent and timeout attributes from the slice
 func unregisterRegEntriesSlice(regEntries []entry) []entry {
-	for numEntry := range regEntries {
-		regEntries[numEntry].Persistent = 0
-		for numMember := range regEntries[numEntry].Tag.Member {
-			regEntries[numEntry].Tag.Member[numMember].Timeout = 0
+	var unregEntries []entry
+
+	copy(unregEntries, regEntries)
+
+	for numEntry := range unregEntries {
+		unregEntries[numEntry].Persistent = 0
+		for numMember := range unregEntries[numEntry].Tag.Member {
+			unregEntries[numEntry].Tag.Member[numMember].Timeout = 0
 		}
 	}
-	return regEntries
+	return unregEntries
 }
 
 // Fully update the ip: as per http://api-lab.paloaltonetworks.com/registered-ip.html:
 // "When register and unregister are combined in a single document, the entries are processed in the order: unregister, register; only a single <register/> and <unregister/> section should be specified."
 func generateUpdateSlice(regEntries []entry) *uidMessage {
-	unregEntries := regEntries
 	body := &uidMessage{
 		Type: "update",
 		Payload: []payload{
@@ -174,7 +177,7 @@ func generateUpdateSlice(regEntries []entry) *uidMessage {
 					regEntries,
 				},
 				UnRegister: &unRegister{
-					unregisterRegEntriesSlice(unregEntries),
+					unregisterRegEntriesSlice(regEntries),
 				},
 			},
 		},
