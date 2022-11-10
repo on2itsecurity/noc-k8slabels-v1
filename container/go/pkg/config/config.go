@@ -12,6 +12,7 @@ var (
 )
 var (
 	iniFile *ini.File
+	verbose *bool
 )
 
 // Config struct contains panfw-dag-k8slabels configuration
@@ -50,7 +51,6 @@ func Load() *Config {
 		RegisterExpire: 60 * 60,
 	}
 
-	verbose := flag.Bool("verbose", false, "See api-calls")
 	// Parse command runtime parameters
 	flag.Parse()
 
