@@ -173,7 +173,7 @@ func generateUpdateSlice(regEntries []entry) *uidMessage {
 					regEntries,
 				},
 				UnRegister: &unRegister{
-					unregisterRegEntriesSlice(regEntries),
+					regEntries,
 				},
 			},
 		},
