@@ -165,6 +165,7 @@ func unregisterRegEntriesSlice(regEntries []entry) []entry {
 // Fully update the ip: as per http://api-lab.paloaltonetworks.com/registered-ip.html:
 // "When register and unregister are combined in a single document, the entries are processed in the order: unregister, register; only a single <register/> and <unregister/> section should be specified."
 func generateUpdateSlice(regEntries []entry) *uidMessage {
+	unregEntries := regEntries
 	body := &uidMessage{
 		Type: "update",
 		Payload: []payload{
@@ -173,7 +174,7 @@ func generateUpdateSlice(regEntries []entry) *uidMessage {
 					regEntries,
 				},
 				UnRegister: &unRegister{
-					regEntries,
+					unregisterRegEntriesSlice(unregEntries),
 				},
 			},
 		},
