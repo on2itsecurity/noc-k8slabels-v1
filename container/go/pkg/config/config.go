@@ -9,10 +9,10 @@ import (
 
 var (
 	iniFileName = flag.String("inifile", "env.ini", "which contains the pan xml-api credentials")
+	verbose     = flag.Bool("verbose", false, "See api-calls")
 )
 var (
 	iniFile *ini.File
-	verbose *bool
 )
 
 // Config struct contains panfw-dag-k8slabels configuration
