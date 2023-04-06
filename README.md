@@ -1,6 +1,6 @@
 # noc-k8slabels-v1
 
-Kubernetes Informer controller for instant syncing `ip`-`podlabels` dictionary with an Palo Alto Firewall.
+Kubernetes Informer controller for instant syncing `ip`-`podlabels` dictionary with a Palo Alto Firewall.
 
 `noc-k8slabels-v1` will watch namespaces for recreation/updates/deletion of pods send api calls to a Palo Alto Firewall, making it possible to define Dynamic Address Groups based upon Kubernetes labels. Your Kubernetes cluster needs to be in direct routing mode and should not apply any source NAT.  Code was inspired upon https://github.com/bitnami-labs/kubewatch and http://api-lab.paloaltonetworks.com/registered-ip.html
 Inside the cluster it needs a `ServiceAccount` coupled to a `ClusterRole` with:
@@ -24,6 +24,7 @@ RegisterExpire=            - Amount of seconds the label registration should per
 Namespace=                 - Kubernetes Namespaces to watch, seperated by a `,`. Leave empty for all namespaces
 LabelKeys=                 - Labels to sync, specerated by a `,` Leave empty for all labels. e.g.: `k8s-app,app`
 FullResync=                - Full sync of current state in seconds. 0 is only startup
+PrefixLabelKeys=           - Prefix label keys
 ```
 ## Deployment
 See deployment directory
@@ -34,4 +35,5 @@ This project has still a lot of features to be desired, such as:
  * A better name
  * Better code... if you are not ashamed of your first release, you have shipped to late :)
  * CA check / support
+ * Tests, mock a Palo Alto FW Api
  
