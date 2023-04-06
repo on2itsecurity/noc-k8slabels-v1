@@ -25,9 +25,10 @@ type Config struct {
 type Sync struct {
 	// for watching specific namespace, leave it empty for watching all.
 	// this config is ignored when watching namespaces
-	Namespace  string
-	LabelKeys  string
-	FullResync int
+	Namespace       string
+	LabelKeys       string
+	FullResync      int
+	PrefixLabelKeys string
 }
 
 // PanFW struct contains Palo Alto Networks configuration - part of Config struct
@@ -41,9 +42,10 @@ type PanFW struct {
 func Load() *Config {
 	// Default values
 	sync := &Sync{
-		Namespace:  "",
-		FullResync: 15 * 60,
-		LabelKeys:  "",
+		Namespace:       "",
+		FullResync:      15 * 60,
+		LabelKeys:       "",
+		PrefixLabelKeys: "",
 	}
 	panfw := &PanFW{
 		Token:          "",

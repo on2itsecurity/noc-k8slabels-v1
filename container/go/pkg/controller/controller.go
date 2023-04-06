@@ -460,7 +460,7 @@ func createKeyValuePairs(m map[string]string) string {
 
 	for key, value := range m {
 		if conf.Sync.LabelKeys == "" || inArray(key, strings.Split(conf.Sync.LabelKeys, ",")) {
-			fmt.Fprintf(b, "%s=%s,", key, value)
+			fmt.Fprintf(b, "%s%s=%s,", conf.Sync.PrefixLabelKeys, key, value)
 		}
 	}
 	return strings.TrimSuffix(b.String(), ",")
