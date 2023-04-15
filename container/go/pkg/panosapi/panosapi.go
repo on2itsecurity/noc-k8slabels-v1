@@ -26,7 +26,7 @@ func httpClient() *http.Client {
 			MaxIdleConnsPerHost: 2,
 			IdleConnTimeout:     90 * time.Second, // Palo Alto has a keepalive of 90 seconds server side, so lets do this also client side
 		},
-		Timeout: 5 * time.Second,
+		Timeout: 10 * time.Second,
 	}
 
 	return client
