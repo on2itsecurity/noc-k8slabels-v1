@@ -5,7 +5,7 @@ toolchain go1.22.2
 
 require (
 	github.com/charithe/timedbuf v0.0.0-20160717160936-e4a8ee453eb4
-	github.com/prometheus/client_golang v1.19.0
+	github.com/prometheus/client_golang v1.19.1
 	github.com/sirupsen/logrus v1.9.3
 	github.com/zekroTJA/timedmap v1.5.2
 	go.uber.org/automaxprocs v1.5.3
