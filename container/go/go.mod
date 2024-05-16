@@ -10,9 +10,9 @@ require (
 	github.com/zekroTJA/timedmap v1.5.2
 	go.uber.org/automaxprocs v1.5.3
 	gopkg.in/ini.v1 v1.67.0
-	k8s.io/api v0.30.0
-	k8s.io/apimachinery v0.30.0
-	k8s.io/client-go v0.30.0
+	k8s.io/api v0.30.1
+	k8s.io/apimachinery v0.30.1
+	k8s.io/client-go v0.30.1
 )
 
 require (
