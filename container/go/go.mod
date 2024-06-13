@@ -1,7 +1,7 @@
 module noc-k8slabels-v1/container/go
 
 go 1.22
-toolchain go1.22.2
+toolchain go1.22.3
 
 require (
 	github.com/charithe/timedbuf v0.0.0-20160717160936-e4a8ee453eb4
@@ -10,8 +10,8 @@ require (
 	github.com/zekroTJA/timedmap v1.5.2
 	go.uber.org/automaxprocs v1.5.3
 	gopkg.in/ini.v1 v1.67.0
-	k8s.io/api v0.30.0
-	k8s.io/apimachinery v0.30.0
+	k8s.io/api v0.30.2
+	k8s.io/apimachinery v0.30.2
 	k8s.io/client-go v0.30.0
 )
 
