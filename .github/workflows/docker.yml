@@ -23,6 +23,6 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
     - uses: actions/checkout@v4
     - name: Build the Docker image
-      run: docker build container/go --tag ghcr.io/${{ github.repository }}
+      run: docker buildx build --platform linux/amd64,linux/arm64 container/go --tag ghcr.io/${{ github.repository }}
     - name: Docker Push
       run: docker push ghcr.io/${{ github.repository }}
