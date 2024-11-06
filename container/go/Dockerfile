@@ -1,7 +1,7 @@
 FROM golang:latest AS gobuild
 
 ARG GO111MODULE=on
-WORKDIR ./src/noc-k8slabels-v1/container/go
+WORKDIR /go/src/noc-k8slabels-v1/container/go
 COPY go.* ./
 RUN go mod download
 
