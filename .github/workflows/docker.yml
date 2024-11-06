@@ -22,6 +22,10 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     - uses: actions/checkout@v4
+    - name: Create the support for multiplatform images
+      run: docker buildx create --use --platform=linux/arm64,linux/amd64 --name multi-platform-builder
+    - name: Inspect the builder
+      run: docker buildx inspect --bootstrap
     - name: Build the Docker image
       run: docker buildx build --platform linux/amd64,linux/arm64 container/go --tag ghcr.io/${{ github.repository }}
     - name: Docker Push
