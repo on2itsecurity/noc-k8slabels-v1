@@ -1,4 +1,4 @@
-FROM golang:latest as gobuild
+FROM golang:latest AS gobuild
 
 ARG GO111MODULE=on
 WORKDIR ./src/noc-k8slabels-v1/container/go
