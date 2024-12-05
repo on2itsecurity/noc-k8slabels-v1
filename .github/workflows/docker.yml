@@ -7,7 +7,6 @@ on:
     branches: [ main ]
 
 jobs:
-
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
@@ -15,14 +14,60 @@ jobs:
       packages: write
 
     steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.23'
+
+    - name: Cross-Compile for amd64
+      run: |
+        cd container/go
+        GOOS=linux GOARCH=amd64 go build -ldflags "-X main.Revision=a" -o app-amd64
+
+    - name: Cross-Compile for arm64
+      run: |
+        cd container/go
+        GOOS=linux GOARCH=arm64 go build -ldflags "-X main.Revision=${{ github.sha }}" -o app-arm64
+
     - name: Login to GitHub Container Registry
       uses: docker/login-action@v3
       with:
         registry: ghcr.io
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-    - uses: actions/checkout@v4
-    - name: Build the Docker image
-      run: docker build container/go --tag ghcr.io/${{ github.repository }}
-    - name: Docker Push
-      run: docker push ghcr.io/${{ github.repository }}
+
+
+    - name: Build for amd64
+      uses: docker/build-push-action@v5
+      with:
+        context: container/go
+        target: ci
+        tags: |
+          ghcr.io/${{ github.repository }}:amd64
+        platforms: linux/amd64
+        push: true
+        build-args: |
+          BIN=app-amd64
+          REVISION=${{github.sha}}
+
+    - name: Build for arm64
+      uses: docker/build-push-action@v5
+      with:
+        context: container/go
+        target: ci
+        tags: |
+          ghcr.io/${{ github.repository }}:arm64
+        platforms: linux/arm64
+        push: true
+        build-args: |
+          BIN=app-arm64
+          REVISION=${{github.sha}}
+
+    - name: Push Multi-Arch Manifest
+      run: |
+        docker manifest create ghcr.io/${{ github.repository }} \
+          ghcr.io/${{ github.repository }}:amd64 \
+          ghcr.io/${{ github.repository }}:arm64
+        docker manifest push ghcr.io/${{ github.repository }}
