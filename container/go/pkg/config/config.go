@@ -33,6 +33,7 @@ type Sync struct {
 
 // PanFW struct contains Palo Alto Networks configuration - part of Config struct
 type PanFW struct {
+	Token          string
 	Username       string
 	Password       string
 	URL            []string `ini:",,allowshadow"`
@@ -49,6 +50,7 @@ func Load() *Config {
 		PrefixLabelKeys: "",
 	}
 	panfw := &PanFW{
+		Token:          "",
 		Username:       "",
 		Password:       "",
 		URL:            []string{},
