@@ -102,7 +102,7 @@ func sendUpdatePanAPI(requestBody string, address string) {
 	if resp == nil {
 		counter.panTotalFailedAPICalls++
 		counter.panFailedAPICalls++
-		logrus.WithField("pkg", "panapi").Errorf("Could not complete http(s) call to PAN-FW XML-API %s", address)
+		logrus.WithField("pkg", "panapi").WithError(err).Errorf("Could not complete http(s) call to PAN-FW XML-API %s", address)
 		return
 	}
 	defer resp.Body.Close()
