@@ -92,11 +92,16 @@ func sendUpdatePanAPIs(requestBody string) {
 func sendUpdatePanAPI(requestBody string, address string) {
 	data := url.Values{}
 	data.Set("type", "user-id")
-	data.Add("key", c.PanFW.Token)
+	if c.PanFW.Token != "" {
+		data.Add("key", c.PanFW.Token)
+	}
 	data.Add("cmd", requestBody)
 
 	req, _ := http.NewRequest("POST", address, strings.NewReader(data.Encode()))
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+	if c.PanFW.Token == "" {
+		req.SetBasicAuth(c.PanFW.Username, c.PanFW.Password)
+	}
 	resp, err := client.Do(req)
 
 	if resp == nil {
