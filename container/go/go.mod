@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/charithe/timedbuf v0.0.0-20241209145701-0faa62e2b61c
 	github.com/prometheus/client_golang v1.23.2
-	github.com/sirupsen/logrus v1.9.3
+	github.com/sirupsen/logrus v1.9.4
 	github.com/zekroTJA/timedmap v1.5.2
 	go.uber.org/automaxprocs v1.6.0
 	gopkg.in/ini.v1 v1.67.3
