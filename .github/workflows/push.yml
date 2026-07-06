@@ -38,7 +38,7 @@ jobs:
 
 
     - name: Build for amd64
-      uses: docker/build-push-action@v6
+      uses: docker/build-push-action@v7
       with:
         context: container/go
         target: ci
@@ -51,7 +51,7 @@ jobs:
           REVISION=${{github.sha}}
 
     - name: Build for arm64
-      uses: docker/build-push-action@v6
+      uses: docker/build-push-action@v7
       with:
         context: container/go
         target: ci
