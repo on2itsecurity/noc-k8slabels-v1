@@ -1,6 +1,6 @@
 module noc-k8slabels-v1/container/go
 
-go 1.26.0
+go 1.27.0
 
 require (
 	github.com/charithe/timedbuf v0.0.0-20241209145701-0faa62e2b61c
