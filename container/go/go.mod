@@ -10,7 +10,7 @@ require (
 	go.uber.org/automaxprocs v1.6.0
 	gopkg.in/ini.v1 v1.67.3
 	k8s.io/api v0.37.0
-	k8s.io/apimachinery v0.37.0
+	k8s.io/apimachinery v0.37.2
 	k8s.io/client-go v0.37.0
 )
 
