@@ -8,7 +8,7 @@ require (
 	github.com/sirupsen/logrus v1.10.2
 	github.com/zekroTJA/timedmap v1.5.2
 	go.uber.org/automaxprocs v1.6.0
-	gopkg.in/ini.v1 v1.67.3
+	gopkg.in/ini.v1 v1.68.0
 	k8s.io/api v0.37.0
 	k8s.io/apimachinery v0.37.0
 	k8s.io/client-go v0.37.0
